@@ -13,22 +13,6 @@
 
     <h3 class="mt-4">检查更新</h3>
     <form id="updateForm">
-        <div class="form-group">
-            <label for="source">选择更新源:</label>
-            <select name="source" id="source" class="form-control">
-                <option value="domestic">国内源</option>
-                <option value="github">GitHub源</option>
-            </select>
-        </div>
-
-        <div class="form-group">
-            <label for="channel">选择更新通道:</label>
-            <select name="channel" id="channel" class="form-control">
-                <option value="stable">正式版</option>
-                <option value="beta">测试版</option>
-            </select>
-        </div>
-
         <button type="button" class="btn btn-primary mt-3" id="checkUpdateButton">检查更新</button>
     </form>
 
@@ -61,27 +45,18 @@
     <script>
         // 处理检查更新按钮的点击事件
         $('#checkUpdateButton').on('click', function() {
-            var source = $('#source').val();
-            var channel = $('#channel').val();
-
             // 使用 AJAX 提交表单，避免页面刷新
             $.ajax({
                 url: '/about',
                 type: 'POST',
-                data: {
-                    source: source,
-                    channel: channel
-                },
+                data: {},
                 success: function(response) {
                     // 根据响应显示结果
                     if (response.new_version) {
                         var update = confirm('发现新版本: ' + response.latest_version + '\n更新日志: ' + response.changelog + '\n是否要更新？更新可能导致页面失联1分钟左右。请耐心等待后端重启，如长时间失联请联系作者。');
                         if (update) {
                             // 如果用户确认，发送更新请求
-                            $.post('/update_version', {
-                                source: source,
-                                channel: channel
-                            }, function(update_response) {
+                            $.post('/update_version', {}, function(update_response) {
                                 alert(update_response.message);
                             });
                         }

@@ -783,31 +783,17 @@ def download_and_extract(url, extract_to='.'):
         print(f"下载或解压时出错: {e}")
         return False
 
-def check_for_updates(source, channel):
-    sources = {
-        'domestic': 'https://www.tefuir0829.cn/version.json',
-        'github': 'https://raw.githubusercontent.com/tefuirZ/alist-strm/refs/heads/main/version.json'
-    }
-
-    channels = {
-        'stable': 'stable',
-        'beta': 'beta'
-    }
+def check_for_updates(source='github', channel='stable'):
+    source_url = 'https://raw.githubusercontent.com/Brian099/alist-strm/main/version.json'
+    channel = 'stable'
 
     try:
-        # 选择源和通道
-        source_url = sources.get(source)
-        channel = channels.get(channel, 'stable')  # 默认选择正式版
-
         # 获取版本信息
         response = requests.get(source_url)
         response.raise_for_status()  # 检查是否有请求错误
 
         version_data = response.json()
         latest_version_info = version_data.get(channel)
-
-        # 本地版本号
-
 
         # 比较远端版本号与本地版本号
         latest_version = latest_version_info.get('version')
@@ -964,11 +950,8 @@ def get_script_log():
 @app.route('/about', methods=['GET', 'POST'])
 def about():
     if request.method == 'POST':
-        source = request.form.get('source', 'github')
-        channel = request.form.get('channel', 'stable')
-
         # 检查更新
-        update_info = check_for_updates(source, channel)
+        update_info = check_for_updates()
 
         if "error" in update_info:
             return jsonify(error=update_info["error"])
@@ -985,11 +968,8 @@ def about():
 
 @app.route('/update_version', methods=['POST'])
 def update_version():
-    source = request.form.get('source', 'github')
-    channel = request.form.get('channel', 'stable')
-
     # 检查更新
-    update_info = check_for_updates(source, channel)
+    update_info = check_for_updates()
 
     if update_info.get("new_version"):
         download_url = update_info.get('download_url')
@@ -1055,23 +1035,8 @@ def forgot_password():
 
 
 def check_and_apply_updates():
-    # 根据本地版本号选择通道
-    if "beta" in local_version:
-        channel = 'beta'
-    else:
-        channel = 'stable'
-
-    # 先检查国内源
-    source = 'domestic'
-
     # 检查更新
-    update_info = check_for_updates(source, channel)
-
-    # 如果国内源检查失败，切换到 GitHub 源
-    if update_info.get("error"):
-        print(f"国内源检查更新失败，切换到 GitHub 源：{update_info['error']}")
-        source = 'github'
-        update_info = check_for_updates(source, channel)
+    update_info = check_for_updates()
 
     # 如果有新版本，下载并更新
     if update_info.get("new_version"):
