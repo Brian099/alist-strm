@@ -10,7 +10,7 @@
     </a>
 
     <!-- 显示日志内容，字体缩小，限制高度并加滚动条 -->
-    <div id="log-content" style="font-size: 14px; background-color: #f8f9fa; padding: 15px; height: 600px; overflow-y: auto; border: 1px solid #ddd;">
+    <div id="log-content" style="font-size: 14px; background-color: #f8f9fa; padding: 15px; height: calc(100vh - 200px); overflow-y: auto; border: 1px solid #ddd;">
         {{ log_content | safe }}
     </div>
 
