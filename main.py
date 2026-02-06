@@ -7,6 +7,8 @@ from urllib.parse import unquote
 import requests
 import time
 from queue import Queue
+from concurrent.futures import ThreadPoolExecutor
+import threading
 from db_handler import DBHandler
 from logger import setup_logger
 
@@ -19,6 +21,7 @@ directory_strm_file_counter = {}  # 每个子目录下创建的 strm 文件数�
 existing_strm_file_counter = 0  # 已存在的 .strm 文件数量
 download_queue = Queue()  # 下载队列
 found_video_files = set()
+counter_lock = threading.Lock()
 
 
 
@@ -179,20 +182,33 @@ def list_files_recursive_with_cache(webdav, directory, config, script_config, si
 
 
 
-def download_files_with_interval(min_interval, max_interval, logger):
-    global download_file_counter, total_download_file_counter
-    while not download_queue.empty():
-        webdav, file_name, local_path, expected_size, config = download_queue.get()
-        try:
-            download_file(webdav, file_name, local_path, expected_size, config, logger)
-        finally:
+def download_task(item, min_interval, max_interval, logger):
+    global download_file_counter
+    webdav, file_name, local_path, expected_size, config = item
+    try:
+        download_file(webdav, file_name, local_path, expected_size, config, logger)
+    finally:
+        with counter_lock:
             download_file_counter += 1
             logger.info(f"文件下载进度: {download_file_counter}/{total_download_file_counter}")
-            download_queue.task_done()
 
-        # 使用从数据库读取的随机下载间隔范围
-        interval = random.randint(min_interval, max_interval)
-        time.sleep(interval)
+    # 使用从数据库读取的随机下载间隔范围
+    interval = random.randint(min_interval, max_interval)
+    time.sleep(interval)
+
+def download_files_with_interval(min_interval, max_interval, logger, max_workers=1):
+    items = []
+    while not download_queue.empty():
+        items.append(download_queue.get())
+        download_queue.task_done()
+
+    if not items:
+        return
+
+    logger.info(f"开始多线程下载，线程数: {max_workers}")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for item in items:
+            executor.submit(download_task, item, min_interval, max_interval, logger)
 
 def create_strm_file(file_name, file_size, config, video_formats, local_directory, directory, size_threshold, logger, local_tree):
     global strm_file_counter, directory_strm_file_counter, existing_strm_file_counter
@@ -404,18 +420,28 @@ def process_with_cache(webdav, config, script_config, config_id, size_threshold,
         logger.info("下载功能已禁用，跳过所有下载任务。程序即将退出。")
         sys.exit(0)
 
-    # 传递下载间隔范围（最小值和最大值）
-    download_files_with_interval(min_interval, max_interval, logger)
+    # 传递下载间隔范围（最小值和最大值）以及线程数
+    download_threads = script_config.get('download_threads', 1)
+    download_files_with_interval(min_interval, max_interval, logger, max_workers=download_threads)
 
     logger.info(f"总共下载了 {download_file_counter} 个文件")
 
 
 
-if __name__ == '__main__':
-    db_handler = DBHandler()
+def main(config_id, task_id=None, **kwargs):
+    # 重置全局计数器
+    global strm_file_counter, video_file_counter, download_file_counter, total_download_file_counter
+    global directory_strm_file_counter, existing_strm_file_counter, download_queue, found_video_files
+    strm_file_counter = 0
+    video_file_counter = 0
+    download_file_counter = 0
+    total_download_file_counter = 0
+    directory_strm_file_counter = {}
+    existing_strm_file_counter = 0
+    download_queue = Queue()
+    found_video_files = set()
 
-    config_id = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-    task_id = sys.argv[2] if len(sys.argv) > 2 else None  # 获取任务ID，如果存在
+    db_handler = DBHandler()
 
     # 设置日志
     if task_id:
@@ -431,7 +457,7 @@ if __name__ == '__main__':
         # 检查配置是否有效
         if not config:
             logger.error(f"无法获取配置ID {config_id} 的配置，程序终止。")
-            sys.exit(1)
+            return
 
         # 输出配置信息到日志
         logger.info(
@@ -444,14 +470,14 @@ if __name__ == '__main__':
         # 检查脚本配置是否有效
         if not script_config or 'video_formats' not in script_config or 'size_threshold' not in script_config:
             logger.error(f"脚本配置出错，缺少必要的配置项，程序终止。")
-            sys.exit(1)
+            return
 
         # 连接 WebDAV 服务器
         try:
             webdav = connect_webdav(config)
         except Exception as e:
             logger.error(f"连接 WebDAV 服务器时出错: {e}")
-            sys.exit(1)
+            return
 
         # 使用缓存策略处理文件，并传递 size_threshold
         try:
@@ -464,7 +490,7 @@ if __name__ == '__main__':
             process_with_cache(webdav, config, script_config, config_id, script_config['size_threshold'], logger, min_interval, max_interval)
         except Exception as e:
             logger.error(f"处理文件时发生错误: {e}")
-            sys.exit(1)
+            return
 
         logger.info("文件处理完成！")
 
@@ -473,4 +499,9 @@ if __name__ == '__main__':
 
     finally:
         db_handler.close()
+
+if __name__ == '__main__':
+    config_id = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    task_id = sys.argv[2] if len(sys.argv) > 2 else None  # 获取任务ID，如果存在
+    main(config_id, task_id)
 

@@ -346,8 +346,32 @@ class StrmValidator:
 
         if invalid_files:
             self.save_invalid_trees(invalid_files)
+        else:
+            # 如果没有无效文件，删除旧的 invalid_file_trees_x.json 文件
+            output_file = os.path.join(INVALID_FILE_TREES_DIR, f'invalid_file_trees_{self.config_id}.json')
+            if os.path.exists(output_file):
+                try:
+                    os.remove(output_file)
+                    self.logger.info(f"所有文件有效，已删除旧的无效目录树文件: {output_file}")
+                except Exception as e:
+                    self.logger.error(f"删除无效目录树文件时出错: {e}")
 
         self.logger.info(f"验证完成。有效的 .strm 文件数量: {valid_count}，无效的 .strm 文件数量: {invalid_count}")
+
+def run_validator(config_id, scan_mode, task_id=None, **kwargs):
+    # 创建数据库处理实例
+    db_handler = DBHandler()
+
+    try:
+        # 创建 StrmValidator 实例并执行校验
+        validator = StrmValidator(db_handler, scan_mode, config_id, task_id=task_id)
+        validator.set_target_directory(config_id)
+        validator.validate_all_strm_files()
+    except Exception as e:
+        print(f"运行过程中出现未捕获的异常: {e}")
+    finally:
+        # 关闭数据库连接
+        db_handler.close()
 
 def main():
     if len(sys.argv) < 3 or len(sys.argv) > 4:
@@ -368,19 +392,7 @@ def main():
         print("扫描模式无效，请选择 'quick' 或 'slow'.")
         sys.exit(1)
 
-    # 创建数据库处理实例
-    db_handler = DBHandler()
-
-    try:
-        # 创建 StrmValidator 实例并执行校验
-        validator = StrmValidator(db_handler, scan_mode, config_id, task_id=task_id)
-        validator.set_target_directory(config_id)
-        validator.validate_all_strm_files()
-    except Exception as e:
-        print(f"运行过程中出现未捕获的异常: {e}")
-    finally:
-        # 关闭数据库连接
-        db_handler.close()
+    run_validator(config_id, scan_mode, task_id)
 
 if __name__ == "__main__":
     main()

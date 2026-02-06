@@ -25,6 +25,11 @@
             <label for="size_threshold" class="form-label">视频文件大小阈值 (MB)</label>
             <input type="number" class="form-control" name="size_threshold" value="{{ script_config.size_threshold }}" required>
         </div>
+        <div class="mb-3">
+            <label for="download_threads" class="form-label">脚本运行线程数</label>
+            <input type="number" class="form-control" name="download_threads" value="{{ script_config.download_threads }}" required min="1" max="20">
+            <div class="form-text">建议设置在 1-10 之间，过大可能导致不稳定。</div>
+        </div>
 
         <button type="submit" class="btn btn-success">保存</button>
     </form>

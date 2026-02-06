@@ -51,6 +51,7 @@ class DBHandler:
         self.add_column_if_not_exists('user_config', 'size_threshold', 'INTEGER', default_value=100)
         self.add_column_if_not_exists('user_config', 'username', 'TEXT')
         self.add_column_if_not_exists('user_config', 'password', 'TEXT')
+        self.add_column_if_not_exists('user_config', 'download_threads', 'INTEGER', default_value=1)
 
         # 如果 user_config 表为空，插入默认值
         self.insert_default_user_config()
@@ -88,11 +89,12 @@ class DBHandler:
             default_image_formats = 'jpg,png,bmp'
             default_metadata_formats = 'nfo'
             default_size_threshold = 100  # 直接使用整数而不是字符串
+            default_download_threads = 1
             self.cursor.execute(
-                '''INSERT INTO user_config (video_formats, subtitle_formats, image_formats, metadata_formats, size_threshold) 
-                   VALUES (?, ?, ?, ?, ?)''',
+                '''INSERT INTO user_config (video_formats, subtitle_formats, image_formats, metadata_formats, size_threshold, download_threads) 
+                   VALUES (?, ?, ?, ?, ?, ?)''',
                 (default_video_formats, default_subtitle_formats, default_image_formats, default_metadata_formats,
-                 default_size_threshold))
+                 default_size_threshold, default_download_threads))
             self.conn.commit()
 
     def get_all_configurations(self):
@@ -184,18 +186,18 @@ class DBHandler:
             return None
 
     def get_script_config(self):
-        # 获取脚本的配置（视频、图片、字幕、元数据格式，以及大小阈值）
+        # 获取脚本的配置（视频、图片、字幕、元数据格式，以及大小阈值，下载线程数）
         self.cursor.execute(
-            "SELECT video_formats, subtitle_formats, image_formats, metadata_formats, size_threshold FROM user_config LIMIT 1")
+            "SELECT video_formats, subtitle_formats, image_formats, metadata_formats, size_threshold, download_threads FROM user_config LIMIT 1")
         result = self.cursor.fetchone()
 
         # 检查是否获取到数据，如果没有获取到，返回默认配置
         if result is None:
             # 插入默认配置，如果数据不存在
             self.insert_default_user_config()
-            result = ('mp4,mkv,avi', 'srt,ass,sub', 'jpg,png', 'nfo', 100)  # 默认格式和默认大小阈值
+            result = ('mp4,mkv,avi', 'srt,ass,sub', 'jpg,png', 'nfo', 100, 1)  # 默认格式和默认大小阈值，默认线程1
 
-        video_formats, subtitle_formats, image_formats, metadata_formats, size_threshold = result
+        video_formats, subtitle_formats, image_formats, metadata_formats, size_threshold, download_threads = result
 
         # 获取 download_enabled
         self.cursor.execute("SELECT download_enabled FROM config LIMIT 1")
@@ -205,6 +207,10 @@ class DBHandler:
         if download_enabled is None:
             download_enabled = (1,)  # 默认启用下载功能
 
+        # 如果 download_threads 为空，赋予默认值 1
+        if download_threads is None:
+            download_threads = 1
+
         # 返回脚本配置
         return {
             'video_formats': video_formats.split(','),
@@ -212,7 +218,8 @@ class DBHandler:
             'image_formats': image_formats.split(','),
             'metadata_formats': metadata_formats.split(','),
             'size_threshold': size_threshold,  # 直接返回以MB为单位的大小阈值
-            'download_enabled': bool(download_enabled[0])
+            'download_enabled': bool(download_enabled[0]),
+            'download_threads': download_threads
         }
 
     def get_user_credentials(self):

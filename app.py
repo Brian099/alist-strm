@@ -12,8 +12,10 @@ from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from db_handler import DBHandler
 from logger import setup_logger
-from task_scheduler import add_tasks_to_cron, update_tasks_in_cron, delete_tasks_from_cron, list_tasks_in_cron, convert_to_cron_time, run_task_immediately, stop_task
+from scheduler import scheduler_manager, convert_to_cron_time
 
+# 初始化调度器
+scheduler_manager.init_scheduler()
 
 app = Flask(__name__)
 app.secret_key = 'www.tefuir0829.cn'
@@ -34,8 +36,7 @@ local_version = "6.0.7"
 
 
 
-CRON_BACKUP_FILE = "/config/cron.bak"
-ENV_FILE = "/config/app.env"
+# 配置文件页面
 
 
 
@@ -155,6 +156,41 @@ def get_target_directory_by_config_id(config_id):
     if config:
         return config['target_directory']
     return None
+
+@app.route('/recheck_invalid_directory/<path:json_filename>', methods=['POST'])
+@login_required
+def recheck_invalid_directory(json_filename):
+    try:
+        # 确保文件名以 'invalid_file_trees_' 开头并以 '.json' 结尾
+        if not json_filename.startswith('invalid_file_trees_') or not json_filename.endswith('.json'):
+            return jsonify({"error": "无效的文件名"}), 400
+
+        # 从文件名中提取 config_id
+        config_id_str = json_filename.replace('invalid_file_trees_', '').replace('.json', '')
+        if not config_id_str.isdigit():
+            return jsonify({"error": "无效的配置 ID"}), 400
+
+        config_id = int(config_id_str)
+
+        # 获取当前文件的目录路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # 使用绝对路径指定 strm_validator.py 的位置
+        script_path = os.path.join(current_dir, 'strm_validator.py')
+
+        if os.path.exists(script_path):
+            # 使用 sys.executable 确保使用当前环境的 Python 解释器
+            # 默认使用 'quick' 模式
+            command = f"{sys.executable} {script_path} {config_id} quick"
+            logger.info(f"启动重新检测命令: {command}")
+            subprocess.Popen(command, shell=True)
+            return jsonify({"message": "检测任务已启动"}), 200
+        else:
+            logger.error(f"无法找到 strm_validator.py 文件: {script_path}")
+            return jsonify({"error": "无法找到验证脚本"}), 500
+
+    except Exception as e:
+        logger.error(f"启动重新检测时出错: {e}")
+        return jsonify({"error": f"启动重新检测时出错: {e}"}), 500
 
 @app.route('/delete_invalid_directory/<path:json_filename>', methods=['POST'])
 def delete_invalid_directory(json_filename):
@@ -448,11 +484,13 @@ def settings():
             image_formats = request.form['image_formats']
             metadata_formats = request.form['metadata_formats']
             size_threshold = int(request.form['size_threshold'])
+            download_threads = int(request.form.get('download_threads', 1))  # 获取线程数，默认为1
+            
             # 使用现有的 db_handler 进行数据库更新
             db_handler.cursor.execute('''
                 UPDATE user_config 
-                SET video_formats = ?, subtitle_formats = ?, image_formats = ?, metadata_formats = ?,size_threshold = ?
-            ''', (video_formats, subtitle_formats, image_formats, metadata_formats, size_threshold))
+                SET video_formats = ?, subtitle_formats = ?, image_formats = ?, metadata_formats = ?, size_threshold = ?, download_threads = ?
+            ''', (video_formats, subtitle_formats, image_formats, metadata_formats, size_threshold, download_threads))
             db_handler.conn.commit()
 
 
@@ -589,8 +627,8 @@ def run_selected_configs():
 @app.route('/scheduled_tasks')
 def scheduled_tasks():
     try:
-        # 从定时任务模块中获取所有定时任务
-        tasks = list_tasks_in_cron()  # 调用 task_scheduler.py 的 list_tasks_in_cron 方法
+        # 从调度器管理器中获取所有定时任务
+        tasks = scheduler_manager.list_tasks()
         return render_template('scheduled_tasks.html', tasks=tasks)
     except Exception as e:
         flash(f'获取定时任务时出错: {e}', 'error')
@@ -625,14 +663,17 @@ def new_task():
         # 将间隔类型和间隔值转换为 cron 时间格式
         cron_time = convert_to_cron_time(interval_type, interval_value)
 
-        # 调用定时任务模块的函数添加任务
-        task_ids = add_tasks_to_cron(
-            task_name=task_name,
-            cron_time=cron_time,
-            config_ids=config_ids,
-            task_mode=task_mode,
-            is_enabled=is_enabled
-        )
+        # 循环为每个配置添加任务
+        for config_id in config_ids:
+             # 为了避免同名覆盖，可以附加 config_id 到 name
+            name_for_task = f"{task_name} (Config {config_id})" if len(config_ids) > 1 else task_name
+            scheduler_manager.add_task(
+                task_name=name_for_task,
+                cron_expression=cron_time,
+                config_id=config_id,
+                task_mode=task_mode,
+                is_enabled=is_enabled
+            )
 
         flash('任务已成功添加！', 'success')
         return redirect(url_for('scheduled_tasks'))
@@ -672,10 +713,16 @@ def update_task(task_id):
         cron_time = convert_to_cron_time(interval_type, interval_value)
 
         # 更新任务信息
-        update_tasks_in_cron(
-            task_ids=[task_id],
-            cron_time=cron_time,
-            config_ids=config_ids,
+        # 目前 APScheduler 更新逻辑较复杂，如果是简单的更新，直接调用 update_task
+        # 注意：这里我们假设前端传递的是单个 config_id，如果传递了多个，逻辑会变复杂
+        # 暂时只支持更新单个任务的 config_id
+        
+        target_config_id = config_ids[0] if config_ids else None
+        
+        scheduler_manager.update_task(
+            task_id=task_id,
+            cron_expression=cron_time,
+            config_id=target_config_id,
             task_mode=task_mode,
             task_name=task_name,
             is_enabled=is_enabled
@@ -685,7 +732,7 @@ def update_task(task_id):
         return redirect(url_for('scheduled_tasks'))
 
     # GET 请求时，加载任务信息
-    tasks = list_tasks_in_cron()  # 调用 task_scheduler.py 的 list_tasks_in_cron 方法
+    tasks = scheduler_manager.list_tasks()
     task = next((t for t in tasks if t.get('task_id') == task_id), None)
     configs = db_handler.get_all_configurations()
 
@@ -704,7 +751,7 @@ def update_task(task_id):
 def delete_task(task_id):
     try:
         # 删除定时任务
-        delete_tasks_from_cron([task_id])  # 调用 task_scheduler.py 的 delete_tasks_from_cron 方法
+        scheduler_manager.delete_task(task_id)
 
         flash('任务已成功删除！', 'success')
     except Exception as e:
@@ -721,7 +768,9 @@ def delete_selected_tasks():
         if not task_ids:
             return jsonify({'success': False, 'error': '未提供任务ID'})
 
-        delete_tasks_from_cron(task_ids)
+        for task_id in task_ids:
+            scheduler_manager.delete_task(task_id)
+            
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -879,33 +928,11 @@ def other():
                                log_content=log_content)
 
 
-def run_task_immediately(task_id):
-    # 获取所有任务
-    tasks = list_tasks_in_cron()
-
-    # 查找指定 task_id 对应的任务
-    task_to_run = next((task for task in tasks if task.get('task_id') == task_id), None)
-
-    if task_to_run:
-        # 获取任务命令
-        command = task_to_run.get('command')
-        if not command:
-            raise ValueError('找不到该任务的命令，无法运行。')
-
-        try:
-            # 使用 subprocess 来运行任务的命令
-            subprocess.Popen(command, shell=True)
-            print(f"任务 {task_id} 已立即运行。")
-        except Exception as e:
-            print(f"运行任务 {task_id} 时发生错误: {e}")
-    else:
-        raise ValueError(f"找不到 task_id 为 {task_id} 的任务。")
-
 @app.route('/run_task_now/<task_id>', methods=['POST'])
 @login_required
 def run_task_now(task_id):
     try:
-        run_task_immediately(task_id)
+        scheduler_manager.run_task_now(task_id)
         flash('任务已触发立即运行！', 'success')
     except Exception as e:
         flash(f"运行任务时出错: {e}", 'error')
@@ -916,7 +943,7 @@ def run_task_now(task_id):
 @login_required
 def stop_task_route(task_id):
     try:
-        success, message = stop_task(task_id)
+        success, message = scheduler_manager.stop_task(task_id)
         if success:
             flash(message, 'success')
         else:
@@ -1069,22 +1096,6 @@ def check_and_apply_updates():
 
 
 
-def sync_cron_with_backup():
-    """同步 crontab 与备份文件"""
-    if os.path.exists(CRON_BACKUP_FILE):
-        with open(CRON_BACKUP_FILE, 'r') as f:
-            backup_cron_jobs = f.read().strip()
-        current_cron_jobs = subprocess.run(['crontab', '-l'], stdout=subprocess.PIPE, text=True).stdout.strip()
-        if backup_cron_jobs != current_cron_jobs:
-            subprocess.run(f'(echo "{backup_cron_jobs}") | crontab -', shell=True)
-            print("Cron tasks synchronized with backup.")
-    else:
-        print("Backup file not found, skipping synchronization.")
-
-import os
-
-ENV_FILE = '/config/app.env'
-
 def ensure_env_file():
     """确保 app.env 存在并同步环境变量，如果没有安全码和端口则自动填入默认值"""
     default_port = '5000'
@@ -1162,7 +1173,6 @@ if __name__ == '__main__':
     logger, log_file = setup_logger('app')
     # 启动应用之前先检查更新
     check_and_apply_updates()
-    sync_cron_with_backup()
     ensure_env_file()
     port = load_port_from_env()
     app.run(host="0.0.0.0", port=port, debug=True)
