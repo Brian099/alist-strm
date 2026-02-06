@@ -155,7 +155,7 @@ class StrmValidator:
         try:
             # 调用 main.py 重新生成缓存文件
             result = subprocess.run(
-                ['/usr/local/bin/python3.9', 'main.py', str(config_id)],
+                [sys.executable, 'main.py', str(config_id)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 universal_newlines=True

@@ -85,14 +85,15 @@ def add_tasks_to_cron(task_name, cron_time, config_ids, task_mode, is_enabled=Tr
         task_id = str(uuid.uuid4())
 
         commands = []
+        python_executable = sys.executable
         if task_mode == 'strm_creation':
-            cmd_main = f'cd "{script_dir}" && /usr/local/bin/python3.9 "{script_dir}/main.py" {config_id} {task_id}'
+            cmd_main = f'cd "{script_dir}" && "{python_executable}" "{script_dir}/main.py" {config_id} {task_id}'
             commands.append(cmd_main)
         elif task_mode == 'strm_validation_quick':
-            cmd_validator = f'cd "{script_dir}" && /usr/local/bin/python3.9 "{script_dir}/strm_validator.py" {config_id} quick {task_id}'
+            cmd_validator = f'cd "{script_dir}" && "{python_executable}" "{script_dir}/strm_validator.py" {config_id} quick {task_id}'
             commands.append(cmd_validator)
         elif task_mode == 'strm_validation_slow':
-            cmd_validator = f'cd "{script_dir}" && /usr/local/bin/python3.9 "{script_dir}/strm_validator.py" {config_id} slow {task_id}'
+            cmd_validator = f'cd "{script_dir}" && "{python_executable}" "{script_dir}/strm_validator.py" {config_id} slow {task_id}'
             commands.append(cmd_validator)
         else:
             raise ValueError('不支持的任务模式')

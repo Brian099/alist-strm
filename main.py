@@ -455,7 +455,12 @@ if __name__ == '__main__':
 
         # 使用缓存策略处理文件，并传递 size_threshold
         try:
-            min_interval, max_interval = config.get('download_interval_range', (1, 3))
+            interval_range = config.get('download_interval_range', '1-3')
+            if isinstance(interval_range, str):
+                min_interval, max_interval = map(int, interval_range.split('-'))
+            else:
+                min_interval, max_interval = interval_range
+                
             process_with_cache(webdav, config, script_config, config_id, script_config['size_threshold'], logger, min_interval, max_interval)
         except Exception as e:
             logger.error(f"处理文件时发生错误: {e}")
