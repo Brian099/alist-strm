@@ -4,31 +4,31 @@
     <h1 class="mt-4">编辑配置</h1>
     <form method="POST" id="editConfigForm">
         <div class="mb-3">
-            <label for="config_name" class="form-label">配置名称</label>
+            <label for="config_name" class="form-label">配置文件别名</label>
             <input type="text" class="form-control" name="config_name" value="{{ config[0] }}" placeholder="请输入配置文件的别名，如：我的 Alist 配置" required>
         </div>
         <div class="mb-3">
-            <label for="url" class="form-label">Alist 的 URL（例如：http://192.168.100.1:5244）</label>
-            <input type="text" class="form-control" name="url" value="{{ config[1] }}" placeholder="请输入 Alist 的 URL" required>
+            <label for="url" class="form-label">Alist 的 URL</label>
+            <input type="text" class="form-control" name="url" value="{{ config[1] }}" placeholder="请输入 Alist 的 URL（例如：http://192.168.100.1:5244，如外网使用需填写外网可访问的alist地址）" required>
         </div>
         <div class="mb-3">
-            <label for="username" class="form-label">Alist 的用户名</label>
-            <input type="text" class="form-control" name="username" value="{{ config[2] }}" placeholder="请输入 Alist 的用户名" required>
+            <label for="username" class="form-label">Alist 用户名</label>
+            <input type="text" class="form-control" name="username" value="{{ config[2] }}" placeholder="请输入 Alist 的用户名（有webdav读取和管理权限的用户,alist需要关闭签名）" required>
         </div>
         <div class="mb-3">
-            <label for="password" class="form-label">Alist 的密码</label>
+            <label for="password" class="form-label">Alist 密码</label>
             <input type="password" class="form-control" name="password" value="{{ config[3] }}" placeholder="请输入 Alist 的密码" required>
         </div>
         <div class="mb-3">
             <label for="rootpath" class="form-label">你想要生成 .strm 的 Alist 根路径</label>
-            <input type="text" class="form-control" name="rootpath" value="{{ config[4] }}" placeholder="请输入 Alist 的根路径，例如：/movies" required>
+            <input type="text" class="form-control" name="rootpath" value="{{ config[4] }}" placeholder="请输入资源在 Alist 的路径，即挂载路径，例如：/movies，支持多级" required>
         </div>
         <div class="mb-3">
             <label for="target_directory" class="form-label">目标目录（通常是 Docker 容器内的映射路径）</label>
-            <input type="text" class="form-control" name="target_directory" value="{{ config[5] }}" placeholder="请输入目标目录的路径，例如：/data/strm_files" required>
+            <input type="text" class="form-control" name="target_directory" value="{{ config[5] }}" placeholder="请输入生成strm储存的路径，例如默认映射路径/data" required>
         </div>
         <div class="mb-3">
-            <label for="download_interval_range" class="form-label">下载文件时间间隔</label>
+            <label for="download_interval_range" class="form-label">下载文件时间间隔（例如：1-5 或 2-5，单位秒）</label>
             <input
                 type="text"
                 class="form-control"
