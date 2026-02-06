@@ -264,6 +264,60 @@ def delete_invalid_directory(json_filename):
         logger.error(f"删除目录时出错: {e}")
         return jsonify({"error": "删除目录时出错"}), 500
 
+@app.route('/strm_browser')
+@login_required
+def strm_browser():
+    try:
+        # 获取所有配置
+        configs = db_handler.get_all_configurations()
+        return render_template('strm_browser.html', configs=configs)
+    except Exception as e:
+        logger.error(f"加载 STRM 浏览器时出错: {e}")
+        flash(f"加载页面时出错: {e}", 'error')
+        return redirect(url_for('index'))
+
+@app.route('/api/browse_strm')
+@login_required
+def browse_strm():
+    config_id = request.args.get('config_id')
+    relative_path = request.args.get('path', '')
+
+    if not config_id:
+        return jsonify({'error': '未提供配置 ID'}), 400
+
+    try:
+        # 获取配置的 target_directory
+        target_directory = get_target_directory_by_config_id(int(config_id))
+        if not target_directory:
+            return jsonify({'error': '未找到配置或目标目录'}), 404
+
+        # 构建完整路径
+        full_path = os.path.join(target_directory, relative_path)
+        
+        # 安全检查：防止路径遍历
+        if not os.path.abspath(full_path).startswith(os.path.abspath(target_directory)):
+            return jsonify({'error': '非法路径访问'}), 403
+
+        if not os.path.exists(full_path):
+            return jsonify({'error': '目录不存在'}), 404
+
+        items = []
+        with os.scandir(full_path) as entries:
+            for entry in entries:
+                if entry.is_dir():
+                    items.append({'name': entry.name, 'type': 'directory'})
+                elif entry.is_file() and entry.name.endswith('.strm'):
+                    items.append({'name': entry.name, 'type': 'file'})
+        
+        # 排序：目录在前，文件在后
+        items.sort(key=lambda x: (x['type'] != 'directory', x['name']))
+
+        return jsonify({'items': items})
+
+    except Exception as e:
+        logger.error(f"浏览目录时出错: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/invalid_file_trees')
 def invalid_file_trees():
     invalid_file_trees = []
@@ -276,7 +330,42 @@ def invalid_file_trees():
                     'name': json_file,  # 保留完整的文件名，包括 .json
                 })
 
-    return render_template('invalid_file_trees.html', invalid_file_trees=invalid_file_trees)
+    # 获取所有配置以供手动运行检测
+    configs = db_handler.get_all_configurations()
+
+    return render_template('invalid_file_trees.html', invalid_file_trees=invalid_file_trees, configs=configs)
+
+@app.route('/start_manual_validation', methods=['POST'])
+@login_required
+def start_manual_validation():
+    try:
+        config_id = request.form.get('config_id')
+        scan_mode = request.form.get('scan_mode', 'quick')
+
+        if not config_id:
+            return jsonify({"error": "未选择配置"}), 400
+
+        # 获取当前文件的目录路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # 使用绝对路径指定 strm_validator.py 的位置
+        script_path = os.path.join(current_dir, 'strm_validator.py')
+
+        if os.path.exists(script_path):
+            # 使用 sys.executable 确保使用当前环境的 Python 解释器
+            command = f"{sys.executable} {script_path} {config_id} {scan_mode}"
+            logger.info(f"启动手动检测命令: {command}")
+            subprocess.Popen(command, shell=True)
+            flash('手动检测任务已启动！请稍后查看日志或刷新此页面。', 'success')
+            return redirect(url_for('invalid_file_trees'))
+        else:
+            logger.error(f"无法找到 strm_validator.py 文件: {script_path}")
+            flash('无法找到验证脚本', 'error')
+            return redirect(url_for('invalid_file_trees'))
+
+    except Exception as e:
+        logger.error(f"启动手动检测时出错: {e}")
+        flash(f"启动检测时出错: {e}", 'error')
+        return redirect(url_for('invalid_file_trees'))
 
 @app.route('/get_invalid_file_tree/<path:json_filename>', methods=['GET'])
 def get_invalid_file_tree(json_filename):

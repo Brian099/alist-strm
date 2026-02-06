@@ -2,7 +2,13 @@
 
 {% block content %}
 <div class="container">
-    <h1>失效的 .strm 文件目录树</h1>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>失效的 .strm 文件目录树</h1>
+        <!-- 触发模态框的按钮 -->
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#manualValidationModal">
+            手动运行检测
+        </button>
+    </div>
 
     {% if invalid_file_trees %}
     <table class="table table-bordered">
@@ -28,6 +34,41 @@
     {% else %}
     <p>尚未进行 STRM 有效性检验，无法提供失效目录树。</p>
     {% endif %}
+</div>
+
+<!-- 模态框，用于手动运行检测 -->
+<div class="modal fade" id="manualValidationModal" tabindex="-1" aria-labelledby="manualValidationModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="manualValidationModalLabel">手动运行 STRM 检测</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+      </div>
+      <form action="{{ url_for('start_manual_validation') }}" method="POST">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="config_id" class="form-label">选择配置</label>
+            <select class="form-select" id="config_id" name="config_id" required>
+                {% for config in configs %}
+                    <option value="{{ config[0] }}">{{ config[1] }} (ID: {{ config[0] }})</option>
+                {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="scan_mode" class="form-label">检测模式</label>
+            <select class="form-select" id="scan_mode" name="scan_mode" required>
+                <option value="quick">快速扫描 (基于缓存)</option>
+                <option value="slow">完整扫描 (遍历文件)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">开始检测</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <!-- 模态框，用于显示目录树结构 -->

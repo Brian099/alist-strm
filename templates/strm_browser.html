@@ -1,0 +1,166 @@
+{% extends 'index.html' %}
+
+{% block content %}
+<div class="container">
+    <h1>STRM 文件浏览器</h1>
+    
+    <!-- 配置选择器 -->
+    <div class="mb-4">
+        <label for="configSelect" class="form-label">选择配置</label>
+        <select class="form-select" id="configSelect">
+            <option value="">请选择配置...</option>
+            {% for config in configs %}
+            <option value="{{ config[0] }}">{{ config[1] }} (ID: {{ config[0] }})</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- 面包屑导航 -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb" id="breadcrumb">
+            <li class="breadcrumb-item active">请选择配置</li>
+        </ol>
+    </nav>
+
+    <!-- 文件列表 -->
+    <div class="list-group" id="fileList">
+        <!-- 文件项将通过 JS 动态插入 -->
+        <div class="list-group-item text-muted">请先选择一个配置以浏览文件。</div>
+    </div>
+</div>
+
+<script>
+    let currentConfigId = null;
+    let currentPath = '';
+
+    const configSelect = document.getElementById('configSelect');
+    const fileList = document.getElementById('fileList');
+    const breadcrumb = document.getElementById('breadcrumb');
+
+    configSelect.addEventListener('change', function() {
+        currentConfigId = this.value;
+        currentPath = '';
+        if (currentConfigId) {
+            loadDirectory(currentConfigId, currentPath);
+        } else {
+            fileList.innerHTML = '<div class="list-group-item text-muted">请先选择一个配置以浏览文件。</div>';
+            updateBreadcrumb();
+        }
+    });
+
+    function loadDirectory(configId, path) {
+        // 显示加载中
+        fileList.innerHTML = '<div class="list-group-item text-center"><div class="spinner-border text-primary" role="status"></div><span class="ms-2">加载中...</span></div>';
+        
+        // 更新面包屑
+        updateBreadcrumb(path);
+
+        fetch(`/api/browse_strm?config_id=${configId}&path=${encodeURIComponent(path)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    fileList.innerHTML = `<div class="list-group-item list-group-item-danger">错误: ${data.error}</div>`;
+                    return;
+                }
+                renderFileList(data.items);
+            })
+            .catch(error => {
+                fileList.innerHTML = `<div class="list-group-item list-group-item-danger">请求失败: ${error}</div>`;
+            });
+    }
+
+    function renderFileList(items) {
+        fileList.innerHTML = '';
+        
+        if (items.length === 0) {
+            fileList.innerHTML = '<div class="list-group-item text-muted">空目录</div>';
+            return;
+        }
+
+        // 如果不是根目录，添加返回上一级
+        if (currentPath) {
+            const parentPath = currentPath.split('/').slice(0, -1).join('/');
+            const backItem = document.createElement('a');
+            backItem.href = '#';
+            backItem.className = 'list-group-item list-group-item-action list-group-item-secondary';
+            backItem.innerHTML = '<i class="bi bi-arrow-return-left"></i> .. (返回上一级)';
+            backItem.onclick = (e) => {
+                e.preventDefault();
+                currentPath = parentPath;
+                loadDirectory(currentConfigId, currentPath);
+            };
+            fileList.appendChild(backItem);
+        }
+
+        items.forEach(item => {
+            const el = document.createElement('a');
+            el.href = '#';
+            el.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+            
+            if (item.type === 'directory') {
+                el.innerHTML = `<span>📁 ${item.name}</span>`;
+                el.onclick = (e) => {
+                    e.preventDefault();
+                    currentPath = currentPath ? `${currentPath}/${item.name}` : item.name;
+                    loadDirectory(currentConfigId, currentPath);
+                };
+            } else {
+                el.innerHTML = `<span>📄 ${item.name}</span> <span class="badge bg-secondary rounded-pill">STRM</span>`;
+                // 文件点击暂时无动作，或者可以预览内容
+            }
+            fileList.appendChild(el);
+        });
+    }
+
+    function updateBreadcrumb(path) {
+        breadcrumb.innerHTML = '';
+        
+        // 根目录
+        const rootItem = document.createElement('li');
+        rootItem.className = 'breadcrumb-item';
+        if (!path) {
+            rootItem.className += ' active';
+            rootItem.textContent = '根目录';
+        } else {
+            const link = document.createElement('a');
+            link.href = '#';
+            link.textContent = '根目录';
+            link.onclick = (e) => {
+                e.preventDefault();
+                currentPath = '';
+                loadDirectory(currentConfigId, currentPath);
+            };
+            rootItem.appendChild(link);
+        }
+        breadcrumb.appendChild(rootItem);
+
+        if (path) {
+            const parts = path.split('/');
+            let accumPath = '';
+            parts.forEach((part, index) => {
+                accumPath = accumPath ? `${accumPath}/${part}` : part;
+                const item = document.createElement('li');
+                item.className = 'breadcrumb-item';
+                
+                if (index === parts.length - 1) {
+                    item.className += ' active';
+                    item.textContent = part;
+                } else {
+                    const link = document.createElement('a');
+                    link.href = '#';
+                    link.textContent = part;
+                    // 使用闭包保存当前的 accumPath
+                    const targetPath = accumPath;
+                    link.onclick = (e) => {
+                        e.preventDefault();
+                        currentPath = targetPath;
+                        loadDirectory(currentConfigId, currentPath);
+                    };
+                    item.appendChild(link);
+                }
+                breadcrumb.appendChild(item);
+            });
+        }
+    }
+</script>
+{% endblock %}

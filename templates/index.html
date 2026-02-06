@@ -65,6 +65,7 @@
             <a href="{{ url_for('configs') }}" class="list-group-item list-group-item-action {% if request.endpoint in ['configs', 'edit_config', 'new_config'] %}active{% endif %}">创建strmの配置文件</a>
             <a href="{{ url_for('scheduled_tasks') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'scheduled_tasks' %}active{% endif %}">定时任务</a>
             <a href="{{ url_for('settings') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'settings' %}active{% endif %}">脚本全局设置</a>
+            <a href="{{ url_for('strm_browser') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'strm_browser' %}active{% endif %}">STRM 文件浏览器</a>
             <a href="{{ url_for('invalid_file_trees') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'invalid_file_trees' %}active{% endif %}">失效的STRM文件查看</a>
             <a href="{{ url_for('other') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'other' %}active{% endif %}">其他</a>
             <a href="{{ url_for('about') }}" class="list-group-item list-group-item-action {% if request.endpoint == 'about' %}active{% endif %}">关于</a>
